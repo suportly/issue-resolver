@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import UTC
 
 import typer
 
@@ -205,7 +206,7 @@ def _fetch_issue(
         has_assignees=has_assignees,
         has_linked_prs=False,
         language=None,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
     repository.upsert_issue(issue)

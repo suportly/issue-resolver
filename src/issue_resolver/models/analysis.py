@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,7 +22,7 @@ class Analysis(BaseModel):
     cost_usd: float | None = None
     model: str | None = None
     duration_ms: int | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("confidence")
     @classmethod

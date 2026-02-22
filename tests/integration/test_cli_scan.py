@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -44,7 +44,7 @@ class TestScanCommand:
                 has_assignees=False,
                 has_linked_prs=False,
                 repo_stars=500,
-                created_at=datetime(2026, 2, 1),
+                created_at=datetime(2026, 2, 1, tzinfo=UTC),
             ),
         ]
 

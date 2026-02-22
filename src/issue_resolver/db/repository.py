@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import sqlite_utils
 
@@ -98,7 +98,7 @@ class Repository:
 
     def update_attempt(self, attempt: Attempt) -> None:
         """Update an existing attempt record."""
-        attempt.updated_at = datetime.utcnow()
+        attempt.updated_at = datetime.now(UTC)
         row = attempt.model_dump()
         row["created_at"] = row["created_at"].isoformat()
         row["updated_at"] = row["updated_at"].isoformat()
