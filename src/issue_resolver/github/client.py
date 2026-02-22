@@ -17,7 +17,12 @@ def check_gh_installed() -> None:
     Raises:
         PrerequisiteError: If gh is not found.
     """
-    result = run_with_timeout(["gh", "--version"], timeout=10)
+    import subprocess
+
+    try:
+        result = run_with_timeout(["gh", "--version"], timeout=15)
+    except subprocess.TimeoutExpired:
+        raise PrerequisiteError("GitHub CLI (gh) check timed out. Is gh installed?")
     if result.returncode != 0:
         raise PrerequisiteError(
             "GitHub CLI (gh) is not installed. Install from https://cli.github.com"
@@ -30,7 +35,14 @@ def check_gh_authenticated() -> None:
     Raises:
         PrerequisiteError: If gh is not authenticated.
     """
-    result = run_with_timeout(["gh", "auth", "status"], timeout=10)
+    import subprocess
+
+    try:
+        result = run_with_timeout(["gh", "auth", "status"], timeout=30)
+    except subprocess.TimeoutExpired:
+        raise PrerequisiteError(
+            "GitHub CLI auth check timed out. Check your network and try again."
+        )
     if result.returncode != 0:
         raise PrerequisiteError("GitHub CLI is not authenticated. Run: gh auth login")
 
