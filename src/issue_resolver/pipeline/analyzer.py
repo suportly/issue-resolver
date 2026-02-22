@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from issue_resolver.claude.invoker import invoke
 from issue_resolver.claude.parser import parse_response
@@ -16,6 +17,45 @@ from issue_resolver.models.issue import Issue
 from issue_resolver.utils.exceptions import AnalysisRejectedError, ClaudeError
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_json(text: str) -> dict | None:
+    """Extract a JSON object from text that may contain surrounding prose.
+
+    Tries in order:
+    1. Direct parse of the full text
+    2. Extract from markdown code block (```json ... ``` or ``` ... ```)
+    3. Find the first { ... } substring and parse it
+    """
+    # 1. Direct parse
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 2. Extract from markdown code block
+    code_block = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+    if code_block:
+        try:
+            data = json.loads(code_block.group(1).strip())
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 3. Find first { ... } substring (greedy from first { to last })
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            data = json.loads(brace_match.group(0))
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return None
 
 
 def analyze_issue(
@@ -65,6 +105,7 @@ def analyze_issue(
         max_turns=1,
         model="haiku",
         timeout=config.claude.timeout_seconds,
+        cwd="/tmp",
     )
 
     claude_result = parse_response(stdout, stderr, returncode, timeout_expired)
@@ -83,9 +124,8 @@ def analyze_issue(
         raise ClaudeError(f"Analysis failed with outcome: {claude_result.outcome}")
 
     # Parse the structured analysis from Claude's response
-    try:
-        analysis_data = json.loads(claude_result.result_text)
-    except json.JSONDecodeError:
+    analysis_data = _extract_json(claude_result.result_text)
+    if analysis_data is None:
         analysis = Analysis(
             issue_id=issue.id,
             rating=SolvabilityRating.UNSOLVABLE,
