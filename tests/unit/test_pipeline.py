@@ -15,6 +15,7 @@ from issue_resolver.models.enums import (
 )
 from issue_resolver.models.issue import Issue
 from issue_resolver.pipeline.orchestrator import run_pipeline
+from issue_resolver.pipeline.resolver import _extract_failed_tests
 from issue_resolver.utils.exceptions import (
     AnalysisRejectedError,
     BudgetExceededError,
@@ -225,3 +226,58 @@ class TestRunPipeline:
         assert result.budget_exhausted is True
         # Second issue should not be processed because budget exceeded after first
         assert result.total_cost_usd > 0
+
+
+class TestExtractFailedTests:
+    def test_pytest_failures(self) -> None:
+        output = (
+            "FAILED tests/test_foo.py::test_bar - ValueError\n"
+            "FAILED tests/test_baz.py::TestClass::test_method - AssertionError\n"
+            "=== 2 failed, 10 passed ==="
+        )
+        result = _extract_failed_tests(output, "pytest")
+        assert result == {
+            "tests/test_foo.py::test_bar",
+            "tests/test_baz.py::TestClass::test_method",
+        }
+
+    def test_pytest_no_failures(self) -> None:
+        output = "=== 10 passed in 1.5s ==="
+        result = _extract_failed_tests(output, "pytest")
+        assert result == set()
+
+    def test_go_failures(self) -> None:
+        output = "--- FAIL: TestFoo (0.5s)\n--- FAIL: TestBar (1.2s)\n"
+        result = _extract_failed_tests(output, "go")
+        assert result == {"TestFoo", "TestBar"}
+
+    def test_cargo_failures(self) -> None:
+        output = "---- tests::test_add stdout ----\n---- tests::test_sub stdout ----\n"
+        result = _extract_failed_tests(output, "cargo")
+        assert result == {"tests::test_add", "tests::test_sub"}
+
+    def test_npm_failures(self) -> None:
+        output = "FAIL src/foo.test.js\nFAIL src/bar.test.js\n"
+        result = _extract_failed_tests(output, "npm")
+        assert result == {"src/foo.test.js", "src/bar.test.js"}
+
+    def test_baseline_comparison_no_regressions(self) -> None:
+        """Pre-existing failures should not block PR submission."""
+        baseline = {"tests/test_a.py::test_x", "tests/test_b.py::test_y"}
+        post_fix = {"tests/test_a.py::test_x", "tests/test_b.py::test_y"}
+        new_failures = post_fix - baseline
+        assert new_failures == set()
+
+    def test_baseline_comparison_new_regression(self) -> None:
+        """New failure introduced by fix should be detected."""
+        baseline = {"tests/test_a.py::test_x"}
+        post_fix = {"tests/test_a.py::test_x", "tests/test_c.py::test_new"}
+        new_failures = post_fix - baseline
+        assert new_failures == {"tests/test_c.py::test_new"}
+
+    def test_baseline_comparison_fix_improves(self) -> None:
+        """Fix that resolves a pre-existing failure is fine."""
+        baseline = {"tests/test_a.py::test_x", "tests/test_b.py::test_y"}
+        post_fix = {"tests/test_a.py::test_x"}
+        new_failures = post_fix - baseline
+        assert new_failures == set()

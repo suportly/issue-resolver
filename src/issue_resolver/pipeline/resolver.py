@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from issue_resolver.claude.invoker import invoke
@@ -25,9 +26,68 @@ from issue_resolver.models.issue import Issue
 from issue_resolver.utils.exceptions import BudgetExceededError, TestsFailedError
 from issue_resolver.utils.subprocess_utils import run_with_timeout
 from issue_resolver.workspace.manager import create_workspace
-from issue_resolver.workspace.project_detector import detect_install_command, detect_test_runner
+from issue_resolver.workspace.project_detector import (
+    DetectedTestRunner,
+    detect_install_command,
+    detect_test_runner,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _run_tests(
+    test_runner: DetectedTestRunner,
+    workspace_path: str,
+) -> tuple[int, str, set[str]]:
+    """Run tests and extract failed test names.
+
+    Returns:
+        Tuple of (return_code, raw_output, set_of_failed_test_ids).
+    """
+    result = run_with_timeout(
+        test_runner.command.split(),
+        timeout=test_runner.timeout,
+        cwd=workspace_path,
+    )
+    raw_output = (result.stdout + result.stderr)[:5000]
+    failed_tests = _extract_failed_tests(raw_output, test_runner.runner_name)
+    return result.returncode, raw_output, failed_tests
+
+
+def _extract_failed_tests(output: str, runner_name: str) -> set[str]:
+    """Extract failed test identifiers from test runner output."""
+    failed = set()
+
+    if runner_name in ("pytest", "unittest"):
+        # Match pytest FAILED lines: "FAILED tests/foo.py::test_bar - Error"
+        for match in re.finditer(r"FAILED\s+(\S+)", output):
+            test_id = match.group(1).rstrip(" -")
+            failed.add(test_id)
+
+    elif runner_name == "npm":
+        # Match "FAIL src/foo.test.js" or "● test name"
+        for match in re.finditer(r"FAIL\s+(\S+)", output):
+            failed.add(match.group(1))
+
+    elif runner_name == "cargo":
+        # Match "test result: FAILED" and "failures:" section
+        for match in re.finditer(
+            r"----\s+(\S+)\s+stdout\s+----", output,
+        ):
+            failed.add(match.group(1))
+
+    elif runner_name == "go":
+        # Match "--- FAIL: TestName"
+        for match in re.finditer(r"---\s+FAIL:\s+(\S+)", output):
+            failed.add(match.group(1))
+
+    elif runner_name in ("rspec", "maven", "gradle"):
+        # Generic: count failures from summary line
+        for match in re.finditer(r"(\d+)\s+failures?", output):
+            if int(match.group(1)) > 0:
+                failed.add(f"_unknown_failure_{match.group(0)}")
+
+    return failed
 
 
 def resolve_issue(
@@ -39,8 +99,8 @@ def resolve_issue(
 ) -> Attempt:
     """Execute the full resolution flow for an issue.
 
-    Flow: fork → clone → detect test runner → invoke AI agent →
-          verify changes → run tests → record attempt.
+    Flow: fork → clone → install deps → baseline tests → invoke AI agent →
+          verify changes → run tests → compare with baseline → record attempt.
 
     Args:
         issue: The issue to resolve.
@@ -96,7 +156,9 @@ def resolve_issue(
             if install_result.returncode != 0:
                 logger.warning(
                     "Dependency install had issues (continuing): %s",
-                    install_result.stderr[:200] if install_result.stderr else "unknown",
+                    install_result.stderr[:200]
+                    if install_result.stderr
+                    else "unknown",
                 )
 
         # Step 3: Detect test runner and read project guidelines
@@ -106,7 +168,26 @@ def resolve_issue(
 
         test_command = test_runner.command if test_runner else None
 
-        # Step 4: Invoke AI agent for resolution
+        # Step 4: Run baseline tests (before any changes)
+        baseline_failures: set[str] = set()
+        baseline_returncode = 0
+        if test_runner:
+            logger.info("Running baseline tests: %s", test_runner.command)
+            baseline_returncode, _, baseline_failures = _run_tests(
+                test_runner, workspace_path,
+            )
+            if baseline_failures:
+                logger.info(
+                    "Baseline: %d pre-existing test failure(s)",
+                    len(baseline_failures),
+                )
+            elif baseline_returncode != 0:
+                # Tests fail but we can't parse which ones — record the code
+                logger.info(
+                    "Baseline tests exit code: %d", baseline_returncode,
+                )
+
+        # Step 5: Invoke AI agent for resolution
         install_command = installer.command if installer else None
         prompt = build_resolution_prompt(
             issue=issue,
@@ -127,7 +208,9 @@ def resolve_issue(
             cwd=workspace_path,
         )
 
-        claude_result = parse_response(stdout, stderr, returncode, timeout_expired)
+        claude_result = parse_response(
+            stdout, stderr, returncode, timeout_expired,
+        )
         attempt.cost_usd = claude_result.cost_usd
         attempt.num_turns = claude_result.num_turns
 
@@ -144,7 +227,9 @@ def resolve_issue(
             attempt.outcome = OutcomeCategory.BUDGET_EXCEEDED
             attempt.duration_ms = int((time.time() - start_time) * 1000)
             repository.update_attempt(attempt)
-            raise BudgetExceededError(f"Resolution budget exceeded: ${claude_result.cost_usd:.2f}")
+            raise BudgetExceededError(
+                f"Resolution budget exceeded: ${claude_result.cost_usd:.2f}"
+            )
 
         if claude_result.outcome in ("process_error", "parse_error"):
             attempt.status = AttemptStatus.FAILED
@@ -153,7 +238,7 @@ def resolve_issue(
             repository.update_attempt(attempt)
             return attempt
 
-        # Step 5: Verify non-empty diff (FR-004)
+        # Step 6: Verify non-empty diff (FR-004)
         if not has_changes(workspace_path):
             attempt.status = AttemptStatus.FAILED
             attempt.outcome = OutcomeCategory.EMPTY_DIFF
@@ -163,31 +248,75 @@ def resolve_issue(
 
         attempt.diff_summary = get_diff_summary(workspace_path)
 
-        # Step 6: Run project tests (FR-005)
+        # Step 7: Run project tests and compare with baseline (FR-005)
         if test_runner:
-            logger.info("Running tests: %s", test_runner.command)
-            test_result = run_with_timeout(
-                test_runner.command.split(),
-                timeout=test_runner.timeout,
-                cwd=workspace_path,
+            logger.info("Running post-fix tests: %s", test_runner.command)
+            post_returncode, post_output, post_failures = _run_tests(
+                test_runner, workspace_path,
             )
-            attempt.test_output = (test_result.stdout + test_result.stderr)[:5000]
+            attempt.test_output = post_output
 
-            if test_result.returncode != 0:
-                # pytest exit code 5 = no tests collected (not a failure)
-                if test_runner.runner_name == "pytest" and test_result.returncode == 5:
-                    logger.info("No tests collected — treating as untested")
-                    attempt.status = AttemptStatus.SUCCEEDED
-                    attempt.outcome = OutcomeCategory.UNTESTED
-                else:
-                    attempt.status = AttemptStatus.FAILED
-                    attempt.outcome = OutcomeCategory.TESTS_FAILED
-                    attempt.duration_ms = int((time.time() - start_time) * 1000)
-                    repository.update_attempt(attempt)
-                    raise TestsFailedError(f"Tests failed. Output: {attempt.test_output[:500]}")
-            else:
+            if post_returncode == 0:
+                # All tests pass
                 attempt.status = AttemptStatus.SUCCEEDED
                 attempt.outcome = OutcomeCategory.PR_SUBMITTED
+            elif (
+                test_runner.runner_name == "pytest"
+                and post_returncode == 5
+            ):
+                # pytest exit code 5 = no tests collected
+                logger.info("No tests collected — treating as untested")
+                attempt.status = AttemptStatus.SUCCEEDED
+                attempt.outcome = OutcomeCategory.UNTESTED
+            else:
+                # Tests failed — check if these are new regressions
+                new_failures = post_failures - baseline_failures
+                if new_failures:
+                    logger.error(
+                        "New test regressions: %s", new_failures,
+                    )
+                    attempt.status = AttemptStatus.FAILED
+                    attempt.outcome = OutcomeCategory.TESTS_FAILED
+                    attempt.duration_ms = int(
+                        (time.time() - start_time) * 1000
+                    )
+                    repository.update_attempt(attempt)
+                    raise TestsFailedError(
+                        f"New test regressions ({len(new_failures)}): "
+                        f"{', '.join(sorted(new_failures)[:5])}"
+                    )
+
+                if not post_failures and baseline_returncode != 0:
+                    # Can't parse failures but baseline also failed
+                    # with same or worse exit code — treat as OK
+                    logger.info(
+                        "Tests exit code %d matches baseline %d "
+                        "— no new regressions detected",
+                        post_returncode,
+                        baseline_returncode,
+                    )
+                    attempt.status = AttemptStatus.SUCCEEDED
+                    attempt.outcome = OutcomeCategory.PR_SUBMITTED
+                elif post_failures and post_failures <= baseline_failures:
+                    # All failures are pre-existing
+                    logger.info(
+                        "All %d failure(s) are pre-existing — "
+                        "no new regressions",
+                        len(post_failures),
+                    )
+                    attempt.status = AttemptStatus.SUCCEEDED
+                    attempt.outcome = OutcomeCategory.PR_SUBMITTED
+                else:
+                    # Fallback: can't determine, treat as failure
+                    attempt.status = AttemptStatus.FAILED
+                    attempt.outcome = OutcomeCategory.TESTS_FAILED
+                    attempt.duration_ms = int(
+                        (time.time() - start_time) * 1000
+                    )
+                    repository.update_attempt(attempt)
+                    raise TestsFailedError(
+                        f"Tests failed. Output: {post_output[:500]}"
+                    )
         else:
             # No test suite detected
             attempt.status = AttemptStatus.SUCCEEDED
