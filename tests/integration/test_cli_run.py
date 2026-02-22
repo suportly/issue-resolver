@@ -16,7 +16,11 @@ class TestRunCommand:
     def test_help_output(self) -> None:
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
-        assert "max-issues" in result.output.lower()
+        # Strip ANSI codes before checking (Rich adds escape sequences)
+        import re
+
+        clean = re.sub(r"\x1b\[[0-9;]*m", "", result.output).lower()
+        assert "max-issues" in clean
 
     @patch("issue_resolver.cli.run.check_gh_installed")
     @patch("issue_resolver.cli.run.check_gh_authenticated")
