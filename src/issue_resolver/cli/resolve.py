@@ -15,7 +15,7 @@ from issue_resolver.cli.context import state
 from issue_resolver.db.engine import get_database
 from issue_resolver.db.repository import Repository
 from issue_resolver.github.client import check_gh_authenticated, check_gh_installed, run_gh_json
-from issue_resolver.models.enums import OutcomeCategory
+from issue_resolver.models.enums import AttemptStatus
 from issue_resolver.models.issue import Issue
 from issue_resolver.pipeline.analyzer import analyze_issue
 from issue_resolver.pipeline.resolver import resolve_issue
@@ -103,10 +103,12 @@ def resolve(
         err_console.print(f"[error]{e}[/error]")
         raise typer.Exit(code=exit_codes.TESTS_FAILED)
 
-    if attempt.outcome in (OutcomeCategory.EMPTY_DIFF, OutcomeCategory.RESOLUTION_FAILED):
+    if attempt.status != AttemptStatus.SUCCEEDED:
         err_console.print(f"[error]Resolution outcome: {attempt.outcome.value}[/error]")
         if attempt.workspace_path:
             console.print(f"  Workspace: {attempt.workspace_path}")
+        if attempt.cost_usd:
+            console.print(f"  Cost: [cost]${attempt.cost_usd:.2f}[/cost]")
         raise typer.Exit(code=exit_codes.GENERAL_ERROR)
 
     console.print(f"  Workspace: {attempt.workspace_path}")
