@@ -59,6 +59,7 @@ def build_resolution_prompt(
     contributing_md: str | None = None,
     pr_template: str | None = None,
     test_command: str | None = None,
+    install_command: str | None = None,
 ) -> str:
     """Build a resolution prompt for the AI coding agent.
 
@@ -92,6 +93,18 @@ ensure tests pass, and commit the changes.
 ## Contributing Guidelines
 
 {contributing_md[:3000]}"""
+        )
+
+    if install_command:
+        sections.append(
+            f"""
+## Dependencies
+
+Project dependencies have been pre-installed. If you need to install additional \
+packages or the environment seems incomplete, run:
+```
+{install_command}
+```"""
         )
 
     if test_command:

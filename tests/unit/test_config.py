@@ -33,7 +33,7 @@ class TestAppConfig:
         config = AppConfig()
         assert config.claude.analysis_max_budget_usd == 0.50
         assert config.claude.resolution_max_budget_usd == 5.00
-        assert config.claude.timeout_seconds == 300
+        assert config.claude.timeout_seconds == 600
 
     def test_rate_limit_defaults(self) -> None:
         config = AppConfig()

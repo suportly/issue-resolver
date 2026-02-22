@@ -19,6 +19,87 @@ class DetectedTestRunner:
     runner_name: str
 
 
+@dataclass
+class DetectedInstaller:
+    """Detected dependency installer configuration."""
+
+    command: str
+    timeout: int
+    language: str
+
+
+def detect_install_command(workspace_path: str) -> DetectedInstaller | None:
+    """Detect the project's dependency install command.
+
+    Returns None if no package manager is detected.
+    """
+    root = Path(workspace_path)
+
+    # Python - prefer pyproject.toml (editable install), then requirements.txt
+    if (root / "pyproject.toml").exists():
+        pip_cmd = (
+            "pip install -e '.[dev,test,tests]' 2>/dev/null"
+            " || pip install -e '.[dev]' 2>/dev/null"
+            " || pip install -e . 2>/dev/null"
+            " || pip install -r requirements.txt 2>/dev/null"
+            " || true"
+        )
+        return DetectedInstaller(
+            command=pip_cmd, timeout=300, language="python",
+        )
+    if (root / "setup.py").exists() or (root / "setup.cfg").exists():
+        pip_cmd = (
+            "pip install -e '.[dev,test]' 2>/dev/null"
+            " || pip install -e . 2>/dev/null"
+            " || true"
+        )
+        return DetectedInstaller(
+            command=pip_cmd, timeout=300, language="python",
+        )
+    if (root / "requirements.txt").exists():
+        return DetectedInstaller(
+            command="pip install -r requirements.txt",
+            timeout=300,
+            language="python",
+        )
+
+    # JavaScript / Node.js
+    if (root / "package-lock.json").exists():
+        return DetectedInstaller(
+            command="npm ci", timeout=300, language="javascript",
+        )
+    if (root / "yarn.lock").exists():
+        return DetectedInstaller(
+            command="yarn install --frozen-lockfile",
+            timeout=300,
+            language="javascript",
+        )
+    if (root / "pnpm-lock.yaml").exists():
+        return DetectedInstaller(
+            command="pnpm install --frozen-lockfile",
+            timeout=300,
+            language="javascript",
+        )
+    if (root / "package.json").exists():
+        return DetectedInstaller(
+            command="npm install", timeout=300, language="javascript",
+        )
+
+    # Ruby
+    if (root / "Gemfile").exists():
+        return DetectedInstaller(command="bundle install", timeout=300, language="ruby")
+
+    # Go (modules download)
+    if (root / "go.mod").exists():
+        return DetectedInstaller(command="go mod download", timeout=180, language="go")
+
+    # Rust (cargo build fetches deps)
+    if (root / "Cargo.toml").exists():
+        return DetectedInstaller(command="cargo fetch", timeout=300, language="rust")
+
+    return None
+
+
 def detect_language(workspace_path: str) -> str | None:
     """Detect the primary programming language of a project.
 

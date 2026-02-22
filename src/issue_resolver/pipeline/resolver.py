@@ -25,7 +25,7 @@ from issue_resolver.models.issue import Issue
 from issue_resolver.utils.exceptions import BudgetExceededError, TestsFailedError
 from issue_resolver.utils.subprocess_utils import run_with_timeout
 from issue_resolver.workspace.manager import create_workspace
-from issue_resolver.workspace.project_detector import detect_test_runner
+from issue_resolver.workspace.project_detector import detect_install_command, detect_test_runner
 
 logger = logging.getLogger(__name__)
 
@@ -84,19 +84,36 @@ def resolve_issue(
         clone_repo(fork_name, workspace_path, depth=1)
         create_branch(workspace_path, branch_name)
 
-        # Step 2: Detect test runner and read project guidelines
+        # Step 2: Install dependencies
+        installer = detect_install_command(workspace_path)
+        if installer:
+            logger.info("Installing dependencies: %s", installer.command)
+            install_result = run_with_timeout(
+                ["bash", "-c", installer.command],
+                timeout=installer.timeout,
+                cwd=workspace_path,
+            )
+            if install_result.returncode != 0:
+                logger.warning(
+                    "Dependency install had issues (continuing): %s",
+                    install_result.stderr[:200] if install_result.stderr else "unknown",
+                )
+
+        # Step 3: Detect test runner and read project guidelines
         test_runner = detect_test_runner(workspace_path)
         contributing_md = read_contributing_md(workspace_path)
         pr_template = read_pr_template(workspace_path)
 
         test_command = test_runner.command if test_runner else None
 
-        # Step 3: Invoke AI agent for resolution
+        # Step 4: Invoke AI agent for resolution
+        install_command = installer.command if installer else None
         prompt = build_resolution_prompt(
             issue=issue,
             contributing_md=contributing_md,
             pr_template=pr_template,
             test_command=test_command,
+            install_command=install_command,
         )
 
         stdout, stderr, returncode, timeout_expired = invoke(
@@ -136,7 +153,7 @@ def resolve_issue(
             repository.update_attempt(attempt)
             return attempt
 
-        # Step 4: Verify non-empty diff (FR-004)
+        # Step 5: Verify non-empty diff (FR-004)
         if not has_changes(workspace_path):
             attempt.status = AttemptStatus.FAILED
             attempt.outcome = OutcomeCategory.EMPTY_DIFF
@@ -146,7 +163,7 @@ def resolve_issue(
 
         attempt.diff_summary = get_diff_summary(workspace_path)
 
-        # Step 5: Run project tests (FR-005)
+        # Step 6: Run project tests (FR-005)
         if test_runner:
             logger.info("Running tests: %s", test_runner.command)
             test_result = run_with_timeout(
