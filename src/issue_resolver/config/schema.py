@@ -33,7 +33,7 @@ class ClaudeConfig(BaseModel):
     analysis_max_budget_usd: float = 0.50
     resolution_max_budget_usd: float = 5.00
     total_session_budget_usd: float = 25.00
-    timeout_seconds: int = 300
+    timeout_seconds: int = 600
 
 
 class WorkspaceConfig(BaseModel):
