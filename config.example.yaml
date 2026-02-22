@@ -1,0 +1,68 @@
+# Issue Resolver Configuration
+# Copy to ~/.config/issue-resolver/config.yaml or .issue-resolver.yaml in your project
+
+# Submit PRs without interactive confirmation
+auto_pr: false
+
+# Zero side-effects mode — analysis and planning only
+dry_run: false
+
+# Maximum issues to process in a single pipeline run
+max_issues_per_run: 5
+
+# GitHub issue search filters
+search:
+  # Issue labels to filter by
+  labels: ["good first issue", "bug", "help wanted"]
+  # Programming languages to target
+  languages: ["python"]
+  # Minimum repository star count
+  min_stars: 50
+  # Maximum issue age in days
+  max_age_days: 365
+  # Exclude issues with assignees
+  exclude_assignees: true
+  # Exclude issues with linked PRs
+  exclude_linked_prs: true
+
+# Target repository configuration
+targets:
+  # Specific repos to search (empty = broad GitHub search)
+  repos: []
+  # Repos to exclude from results
+  exclude_repos: []
+
+# AI agent configuration
+claude:
+  # Model for resolution (expensive, capable)
+  model: "opus"
+  # Maximum budget for solvability analysis (USD)
+  analysis_max_budget_usd: 0.50
+  # Maximum budget per resolution attempt (USD)
+  resolution_max_budget_usd: 5.00
+  # Maximum total budget per session/pipeline run (USD)
+  total_session_budget_usd: 25.00
+  # Timeout for AI agent invocations (seconds)
+  timeout_seconds: 300
+
+# Workspace management
+workspace:
+  # Base directory for temporary cloned repos
+  base_dir: "/tmp/issue-resolver-workspaces"
+  # Clean up workspace after successful resolution
+  cleanup_on_success: true
+  # Preserve workspace after failed resolution (for debugging)
+  cleanup_on_failure: false
+
+# Rate limiting to avoid abuse of external services
+rate_limit:
+  # Maximum GitHub API requests per minute
+  github_requests_per_minute: 25
+  # Maximum AI agent invocations per hour
+  claude_invocations_per_hour: 30
+  # Minimum delay between processing issues (seconds)
+  min_delay_between_issues_seconds: 10
+
+# Secrets — set via environment variables, NEVER in config files:
+#   GITHUB_TOKEN="ghp_..."       (or use `gh auth login`)
+#   ANTHROPIC_API_KEY="sk-ant-..."
