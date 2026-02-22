@@ -1,0 +1,25 @@
+{
+  "number": 9501,
+  "title": "Fix regression in serializer validation for nested fields",
+  "body": "## Bug Report\n\nWhen using nested serializers with `many=True`, the validation error messages are incorrectly formatted.\n\n### Steps to Reproduce\n\n1. Create a serializer with a nested `many=True` field\n2. Submit invalid data\n3. Observe the error response\n\n### Expected Behavior\n\nError messages should be nested under the field name.\n\n### Actual Behavior\n\nError messages are flat and lose the field context.\n\n### Environment\n\n- Python 3.11\n- DRF 3.14.0",
+  "labels": [
+    {"name": "bug"},
+    {"name": "good first issue"}
+  ],
+  "state": "OPEN",
+  "url": "https://github.com/encode/django-rest-framework/issues/9501",
+  "assignees": [],
+  "comments": [
+    {
+      "author": {"login": "tomchristie"},
+      "body": "This looks like a regression from #9450. The fix should be in `rest_framework/serializers.py` around line 320."
+    }
+  ],
+  "repository": {
+    "owner": {"login": "encode"},
+    "name": "django-rest-framework",
+    "primaryLanguage": {"name": "Python"},
+    "stargazerCount": 28100
+  },
+  "createdAt": "2026-02-19T10:30:00Z"
+}

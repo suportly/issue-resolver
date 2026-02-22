@@ -1,0 +1,8 @@
+{
+  "result": "{\"rating\": \"solvable\", \"confidence\": 0.85, \"complexity\": \"low\", \"reasoning\": \"Clear bug with specific error message and test case provided. The maintainer pointed to the exact file and line. This is a regression from a recent PR with a small scope.\"}",
+  "is_error": false,
+  "cost_usd": 0.05,
+  "duration_ms": 3000,
+  "num_turns": 1,
+  "session_id": "880e8400-e29b-41d4-a716-446655440003"
+}

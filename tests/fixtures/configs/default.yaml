@@ -1,0 +1,9 @@
+auto_pr: false
+dry_run: false
+max_issues_per_run: 5
+
+search:
+  labels: ["good first issue", "bug", "help wanted"]
+  languages: ["python"]
+  min_stars: 50
+  max_age_days: 365
