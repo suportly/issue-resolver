@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -25,7 +25,7 @@ class Issue(BaseModel):
     language: str | None = None
     repo_stars: int | None = None
     created_at: datetime
-    discovered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    discovered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def full_repo(self) -> str:

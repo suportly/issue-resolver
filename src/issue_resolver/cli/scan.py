@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 
 import typer
 from rich.table import Table
@@ -73,10 +74,10 @@ def scan(
     table.add_column("Stars", justify="right")
     table.add_column("Age", justify="right")
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     for i, issue in enumerate(candidates, 1):
-        age_days = (datetime.now(timezone.utc) - issue.created_at).days
+        age_days = (datetime.now(UTC) - issue.created_at).days
         labels_str = ", ".join(issue.labels[:3])
         stars_str = _format_stars(issue.repo_stars) if issue.repo_stars else "-"
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import UTC
 
 import typer
 
@@ -161,7 +162,7 @@ def _fetch_issue(
     dry_run: bool,
 ) -> Issue:
     """Fetch issue details from GitHub and persist to database."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     if dry_run:
         # In dry-run, still fetch issue metadata (read-only)
@@ -205,7 +206,7 @@ def _fetch_issue(
         has_assignees=has_assignees,
         has_linked_prs=False,
         language=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
     repository.upsert_issue(issue)

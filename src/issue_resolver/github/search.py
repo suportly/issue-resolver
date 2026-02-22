@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from issue_resolver.github.client import run_gh_json
 from issue_resolver.models.issue import Issue
@@ -53,7 +53,7 @@ def build_search_query(
         parts.append(f"stars:>{min_stars}")
 
     if max_age_days:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
         parts.append(f"created:>{cutoff.strftime('%Y-%m-%d')}")
 
     if repos:
@@ -128,7 +128,7 @@ def parse_search_result(item: dict) -> Issue:
     try:
         created_at = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
-        created_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
 
     return Issue(
         repo_owner=repo_owner,
