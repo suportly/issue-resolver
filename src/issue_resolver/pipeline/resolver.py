@@ -72,7 +72,8 @@ def _extract_failed_tests(output: str, runner_name: str) -> set[str]:
     elif runner_name == "cargo":
         # Match "test result: FAILED" and "failures:" section
         for match in re.finditer(
-            r"----\s+(\S+)\s+stdout\s+----", output,
+            r"----\s+(\S+)\s+stdout\s+----",
+            output,
         ):
             failed.add(match.group(1))
 
@@ -156,9 +157,7 @@ def resolve_issue(
             if install_result.returncode != 0:
                 logger.warning(
                     "Dependency install had issues (continuing): %s",
-                    install_result.stderr[:200]
-                    if install_result.stderr
-                    else "unknown",
+                    install_result.stderr[:200] if install_result.stderr else "unknown",
                 )
 
         # Step 3: Detect test runner and read project guidelines
@@ -174,7 +173,8 @@ def resolve_issue(
         if test_runner:
             logger.info("Running baseline tests: %s", test_runner.command)
             baseline_returncode, _, baseline_failures = _run_tests(
-                test_runner, workspace_path,
+                test_runner,
+                workspace_path,
             )
             if baseline_failures:
                 logger.info(
@@ -184,7 +184,8 @@ def resolve_issue(
             elif baseline_returncode != 0:
                 # Tests fail but we can't parse which ones — record the code
                 logger.info(
-                    "Baseline tests exit code: %d", baseline_returncode,
+                    "Baseline tests exit code: %d",
+                    baseline_returncode,
                 )
 
         # Step 5: Invoke AI agent for resolution
@@ -209,7 +210,10 @@ def resolve_issue(
         )
 
         claude_result = parse_response(
-            stdout, stderr, returncode, timeout_expired,
+            stdout,
+            stderr,
+            returncode,
+            timeout_expired,
         )
         attempt.cost_usd = claude_result.cost_usd
         attempt.num_turns = claude_result.num_turns
@@ -227,9 +231,7 @@ def resolve_issue(
             attempt.outcome = OutcomeCategory.BUDGET_EXCEEDED
             attempt.duration_ms = int((time.time() - start_time) * 1000)
             repository.update_attempt(attempt)
-            raise BudgetExceededError(
-                f"Resolution budget exceeded: ${claude_result.cost_usd:.2f}"
-            )
+            raise BudgetExceededError(f"Resolution budget exceeded: ${claude_result.cost_usd:.2f}")
 
         if claude_result.outcome in ("process_error", "parse_error"):
             attempt.status = AttemptStatus.FAILED
@@ -252,7 +254,8 @@ def resolve_issue(
         if test_runner:
             logger.info("Running post-fix tests: %s", test_runner.command)
             post_returncode, post_output, post_failures = _run_tests(
-                test_runner, workspace_path,
+                test_runner,
+                workspace_path,
             )
             attempt.test_output = post_output
 
@@ -260,10 +263,7 @@ def resolve_issue(
                 # All tests pass
                 attempt.status = AttemptStatus.SUCCEEDED
                 attempt.outcome = OutcomeCategory.PR_SUBMITTED
-            elif (
-                test_runner.runner_name == "pytest"
-                and post_returncode == 5
-            ):
+            elif test_runner.runner_name == "pytest" and post_returncode == 5:
                 # pytest exit code 5 = no tests collected
                 logger.info("No tests collected — treating as untested")
                 attempt.status = AttemptStatus.SUCCEEDED
@@ -273,13 +273,12 @@ def resolve_issue(
                 new_failures = post_failures - baseline_failures
                 if new_failures:
                     logger.error(
-                        "New test regressions: %s", new_failures,
+                        "New test regressions: %s",
+                        new_failures,
                     )
                     attempt.status = AttemptStatus.FAILED
                     attempt.outcome = OutcomeCategory.TESTS_FAILED
-                    attempt.duration_ms = int(
-                        (time.time() - start_time) * 1000
-                    )
+                    attempt.duration_ms = int((time.time() - start_time) * 1000)
                     repository.update_attempt(attempt)
                     raise TestsFailedError(
                         f"New test regressions ({len(new_failures)}): "
@@ -290,8 +289,7 @@ def resolve_issue(
                     # Can't parse failures but baseline also failed
                     # with same or worse exit code — treat as OK
                     logger.info(
-                        "Tests exit code %d matches baseline %d "
-                        "— no new regressions detected",
+                        "Tests exit code %d matches baseline %d — no new regressions detected",
                         post_returncode,
                         baseline_returncode,
                     )
@@ -300,8 +298,7 @@ def resolve_issue(
                 elif post_failures and post_failures <= baseline_failures:
                     # All failures are pre-existing
                     logger.info(
-                        "All %d failure(s) are pre-existing — "
-                        "no new regressions",
+                        "All %d failure(s) are pre-existing — no new regressions",
                         len(post_failures),
                     )
                     attempt.status = AttemptStatus.SUCCEEDED
@@ -310,13 +307,9 @@ def resolve_issue(
                     # Fallback: can't determine, treat as failure
                     attempt.status = AttemptStatus.FAILED
                     attempt.outcome = OutcomeCategory.TESTS_FAILED
-                    attempt.duration_ms = int(
-                        (time.time() - start_time) * 1000
-                    )
+                    attempt.duration_ms = int((time.time() - start_time) * 1000)
                     repository.update_attempt(attempt)
-                    raise TestsFailedError(
-                        f"Tests failed. Output: {post_output[:500]}"
-                    )
+                    raise TestsFailedError(f"Tests failed. Output: {post_output[:500]}")
         else:
             # No test suite detected
             attempt.status = AttemptStatus.SUCCEEDED

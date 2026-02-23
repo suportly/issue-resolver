@@ -45,16 +45,16 @@ def detect_install_command(workspace_path: str) -> DetectedInstaller | None:
             " || true"
         )
         return DetectedInstaller(
-            command=pip_cmd, timeout=300, language="python",
+            command=pip_cmd,
+            timeout=300,
+            language="python",
         )
     if (root / "setup.py").exists() or (root / "setup.cfg").exists():
-        pip_cmd = (
-            "pip install -e '.[dev,test]' 2>/dev/null"
-            " || pip install -e . 2>/dev/null"
-            " || true"
-        )
+        pip_cmd = "pip install -e '.[dev,test]' 2>/dev/null || pip install -e . 2>/dev/null || true"
         return DetectedInstaller(
-            command=pip_cmd, timeout=300, language="python",
+            command=pip_cmd,
+            timeout=300,
+            language="python",
         )
     if (root / "requirements.txt").exists():
         return DetectedInstaller(
@@ -66,7 +66,9 @@ def detect_install_command(workspace_path: str) -> DetectedInstaller | None:
     # JavaScript / Node.js
     if (root / "package-lock.json").exists():
         return DetectedInstaller(
-            command="npm ci", timeout=300, language="javascript",
+            command="npm ci",
+            timeout=300,
+            language="javascript",
         )
     if (root / "yarn.lock").exists():
         return DetectedInstaller(
@@ -82,7 +84,9 @@ def detect_install_command(workspace_path: str) -> DetectedInstaller | None:
         )
     if (root / "package.json").exists():
         return DetectedInstaller(
-            command="npm install", timeout=300, language="javascript",
+            command="npm install",
+            timeout=300,
+            language="javascript",
         )
 
     # Ruby
