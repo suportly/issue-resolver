@@ -153,5 +153,5 @@ def has_changes(workspace_path: str) -> bool:
 
 def _get_gh_username() -> str:
     """Get the authenticated GitHub username."""
-    output = run_gh(["api", "user", "--jq", ".login"], timeout=10)
+    output = run_gh(["api", "/user", "--jq", ".login"], timeout=30)
     return output.strip()
